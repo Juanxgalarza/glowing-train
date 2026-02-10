@@ -21,6 +21,7 @@
                     <p><strong>WASD / Arrows</strong> - Move</p>
                     <p><strong>Mouse</strong> - Look around</p>
                     <p><strong>Left Click</strong> - Attack</p>
+                    <p><strong>Shift</strong> - Dash (3s cooldown)</p>
                     <p><strong>E</strong> - Pick up item / Interact</p>
                     <p><strong>1-5</strong> - Use consumables</p>
                     <p><strong>Tab</strong> - Inventory</p>
@@ -57,6 +58,10 @@
                 <div id="message-log"></div>
             </div>
             <div id="crosshair">+</div>
+            <div id="dash-indicator">
+                <div id="dash-bar"></div>
+                <span id="dash-text">DASH [Shift]</span>
+            </div>
             <div id="interaction-prompt" class="hidden">
                 <span id="prompt-text">[E] Pick up</span>
             </div>
@@ -131,6 +136,7 @@
     <script src="js/entities/player.js"></script>
     <script src="js/entities/enemies.js"></script>
     <script src="js/entities/projectiles.js"></script>
+    <script src="js/entities/particles.js"></script>
     <script src="js/ui/hud.js"></script>
     <script src="js/ui/screens.js"></script>
     <script src="js/core/input.js"></script>

@@ -36,6 +36,16 @@ class Player {
         this.attackRange = 3.0;
         this.invulnTimer = 0;
 
+        // Dash
+        this.dashCooldown = 0;
+        this.dashMaxCooldown = 3.0;
+        this.dashSpeed = 25;
+        this.dashDuration = 0.15;
+        this.dashTimer = 0;
+        this.isDashing = false;
+        this.dashDirX = 0;
+        this.dashDirZ = 0;
+
         // Buffs
         this.buffs = [];
 
@@ -202,6 +212,15 @@ class Player {
     update(dt) {
         // Update invuln timer
         if (this.invulnTimer > 0) this.invulnTimer -= dt;
+
+        // Dash cooldown
+        if (this.dashCooldown > 0) this.dashCooldown -= dt;
+        if (this.isDashing) {
+            this.dashTimer -= dt;
+            if (this.dashTimer <= 0) {
+                this.isDashing = false;
+            }
+        }
 
         // Update buffs
         for (let i = this.buffs.length - 1; i >= 0; i--) {

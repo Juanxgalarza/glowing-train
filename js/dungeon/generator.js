@@ -73,7 +73,8 @@ class DungeonGenerator {
 
     _bspSplit(node, depth) {
         const minSize = 6;
-        const maxDepth = 5;
+        // Fewer splits for smaller maps (early floors)
+        const maxDepth = this.width <= 28 ? 3 : this.width <= 36 ? 4 : 5;
 
         if (depth >= maxDepth || (node.w <= minSize * 2 && node.h <= minSize * 2)) {
             this._createRoom(node);
@@ -221,8 +222,8 @@ class DungeonGenerator {
     }
 
     _placeEnemies() {
-        const baseCount = 3 + this.floor * 2;
-        const count = Utils.rand(baseCount, baseCount + 4);
+        const baseCount = 6 + this.floor * 3;
+        const count = Utils.rand(baseCount, baseCount + 6);
 
         for (let i = 0; i < count; i++) {
             // Don't place in first room
@@ -234,6 +235,21 @@ class DungeonGenerator {
                     z: pos.z,
                     type: this._getEnemyTypeForFloor(),
                 });
+            }
+        }
+
+        // Extra enemies per room (2-3 per room guarantees populated rooms)
+        for (let r = 1; r < this.rooms.length; r++) {
+            const extras = Utils.rand(1, 2);
+            for (let i = 0; i < extras; i++) {
+                const pos = this._getRandomFloorInRoom(this.rooms[r]);
+                if (pos) {
+                    this.enemySpawns.push({
+                        x: pos.x,
+                        z: pos.z,
+                        type: this._getEnemyTypeForFloor(),
+                    });
+                }
             }
         }
 
