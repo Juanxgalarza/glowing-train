@@ -31,6 +31,7 @@ class Game {
         this.dungeonRenderer = new DungeonRenderer(this.scene);
         this.enemyManager = new EnemyManager(this.scene);
         this.projectileManager = new ProjectileManager(this.scene);
+        this.particleSystem = new ParticleSystem(this.scene);
         this.itemSystem = new ItemSystem(this.scene);
 
         // Player
@@ -63,6 +64,13 @@ class Game {
         // Screen shake
         this.shakeIntensity = 0;
         this.shakeTimer = 0;
+
+        // Footstep timer
+        this.footstepTimer = 0;
+
+        // Dash HUD
+        this.dashIndicator = document.getElementById('dash-indicator');
+        this.dashBar = document.getElementById('dash-bar');
 
         // Timing
         this.clock = new THREE.Clock();
@@ -367,6 +375,7 @@ class Game {
         this.dungeonRenderer.clear();
         this.enemyManager.clear();
         this.projectileManager.clear();
+        this.particleSystem.clear();
         this.itemSystem.clear();
 
         // Generate dungeon - early floors are smaller for faster progression
@@ -444,19 +453,54 @@ class Game {
         this.camera.rotation.y = this.cameraYaw;
         this.camera.rotation.x = this.cameraPitch;
 
-        // Player movement
+        // Direction vectors (used by movement and dash)
+        const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(
+            new THREE.Quaternion().setFromEuler(new THREE.Euler(0, this.cameraYaw, 0))
+        );
+        const right = new THREE.Vector3(1, 0, 0).applyQuaternion(
+            new THREE.Quaternion().setFromEuler(new THREE.Euler(0, this.cameraYaw, 0))
+        );
+
+        // Dash initiation (Shift)
         const { mx, mz } = this.input.getMovement();
-        if (mx !== 0 || mz !== 0) {
+        if (this.input.wasPressed('ShiftLeft') || this.input.wasPressed('ShiftRight')) {
+            if (this.player.dashCooldown <= 0 && !this.player.isDashing) {
+                this.player.isDashing = true;
+                this.player.dashTimer = this.player.dashDuration;
+                this.player.dashCooldown = this.player.dashMaxCooldown;
+                this.player.invulnTimer = this.player.dashDuration; // i-frames during dash
+
+                // Dash direction: movement direction or forward
+                let dashDir = new THREE.Vector3();
+                if (mx !== 0 || mz !== 0) {
+                    dashDir.addScaledVector(forward, mz);
+                    dashDir.addScaledVector(right, mx);
+                } else {
+                    dashDir.copy(forward);
+                }
+                dashDir.normalize();
+                this.player.dashDirX = dashDir.x;
+                this.player.dashDirZ = dashDir.z;
+            }
+        }
+
+        // Player movement
+        if (this.player.isDashing) {
+            // Dash movement - fast, straight line
+            const dashStep = this.player.dashSpeed * dt;
+            const newX = this.player.x + this.player.dashDirX * dashStep;
+            const newZ = this.player.z + this.player.dashDirZ * dashStep;
+            if (this._canPlayerMoveTo(newX, newZ)) {
+                this.player.x = newX;
+                this.player.z = newZ;
+            } else {
+                this.player.isDashing = false;
+            }
+            // Dash trail particles
+            this.particleSystem.spawnDashTrail(this.player.x, PLAYER_HEIGHT * 0.5, this.player.z);
+        } else if (mx !== 0 || mz !== 0) {
             const stats = this.player.getEffectiveStats();
             const moveSpeed = stats.speed * dt;
-
-            // Direction relative to camera
-            const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(
-                new THREE.Quaternion().setFromEuler(new THREE.Euler(0, this.cameraYaw, 0))
-            );
-            const right = new THREE.Vector3(1, 0, 0).applyQuaternion(
-                new THREE.Quaternion().setFromEuler(new THREE.Euler(0, this.cameraYaw, 0))
-            );
 
             let moveDir = new THREE.Vector3();
             moveDir.addScaledVector(forward, mz);
@@ -476,10 +520,17 @@ class Game {
                 this.player.z = newZ;
             }
 
-            this.camera.position.set(this.player.x, PLAYER_HEIGHT, this.player.z);
-            this.playerLight.position.set(this.player.x, PLAYER_HEIGHT, this.player.z);
-            this.playerFillLight.position.set(this.player.x, PLAYER_HEIGHT + 1, this.player.z);
+            // Footstep particles
+            this.footstepTimer -= dt;
+            if (this.footstepTimer <= 0) {
+                this.footstepTimer = 0.35;
+                this.particleSystem.spawnFootstepDust(this.player.x, this.player.z);
+            }
         }
+
+        this.camera.position.set(this.player.x, PLAYER_HEIGHT, this.player.z);
+        this.playerLight.position.set(this.player.x, PLAYER_HEIGHT, this.player.z);
+        this.playerFillLight.position.set(this.player.x, PLAYER_HEIGHT + 1, this.player.z);
 
         // Player update
         this.player.update(dt);
@@ -509,9 +560,11 @@ class Game {
         // Interaction check
         this._checkInteraction();
 
-        // Pickup (E key)
+        // E key actions - stairs take priority, then pickup/interact
         if (this.input.wasPressed('KeyE')) {
-            this._interact();
+            if (!this._tryDescendStairs()) {
+                this._interact();
+            }
         }
 
         // Consumables (1-5)
@@ -521,8 +574,8 @@ class Game {
             }
         }
 
-        // Check stairs
-        this._checkStairs();
+        // Stairs prompt (visual only, action handled above)
+        this._checkStairsPrompt();
 
         // Check traps
         this._checkTraps(dt);
@@ -535,6 +588,9 @@ class Game {
         // Dungeon animations
         this.dungeonRenderer.update(this.time);
 
+        // Particles
+        this.particleSystem.update(dt);
+
         // Update HUD
         const stats = this.player.getEffectiveStats();
         this.hud.updateHealth(this.player.hp, stats.maxHp);
@@ -542,6 +598,16 @@ class Game {
         this.hud.updateStats(stats);
         this.hud.updateGold(this.player.gold);
         this.hud.updateConsumables(this.player.inventory.consumableSlots);
+
+        // Dash HUD
+        if (this.player.dashCooldown > 0) {
+            const pct = (1 - this.player.dashCooldown / this.player.dashMaxCooldown) * 100;
+            this.dashBar.style.width = pct + '%';
+            this.dashIndicator.classList.add('on-cooldown');
+        } else {
+            this.dashBar.style.width = '100%';
+            this.dashIndicator.classList.remove('on-cooldown');
+        }
 
         // Minimap
         const pg = Utils.worldToGrid(this.player.x, this.player.z);
@@ -602,6 +668,15 @@ class Game {
                 const actualDmg = this.enemyManager.takeDamage(enemy, result.damage);
                 hitAny = true;
 
+                // Hit particles
+                const hitY = enemy.size * 0.8;
+                if (result.isCrit) {
+                    this.particleSystem.spawnCritBurst(enemy.x, hitY, enemy.z);
+                } else {
+                    const edef = ENEMY_DEFS[enemy.type];
+                    this.particleSystem.spawnHitBurst(enemy.x, hitY, enemy.z, edef ? edef.color : 0xff4444, 6);
+                }
+
                 // Screen position for damage number
                 const screenPos = this._worldToScreen(enemy.x, enemy.size * 1.5, enemy.z);
                 if (screenPos) {
@@ -655,6 +730,10 @@ class Game {
 
     _onEnemyKilled(enemy) {
         this.player.kills++;
+
+        // Death explosion particles
+        const edef = ENEMY_DEFS[enemy.type];
+        this.particleSystem.spawnDeathExplosion(enemy.x, enemy.size * 0.8, enemy.z, edef ? edef.color : 0xff4444);
 
         // XP
         const leveled = this.player.addXP(enemy.xp);
@@ -735,6 +814,7 @@ class Game {
                     } else if (dmg > 0) {
                         this.hud.showDamageFlash();
                         this.hud.addMessage(`${enemy.name} hits for ${dmg}!`, 'damage');
+                        this.particleSystem.spawnDamageParticles(this.player.x, PLAYER_HEIGHT * 0.6, this.player.z);
 
                         // Thorns
                         if (this.player.thorns > 0) {
@@ -756,6 +836,7 @@ class Game {
             if (dmg > 0) {
                 this.hud.showDamageFlash();
                 this.hud.addMessage(`Hit by projectile for ${dmg}!`, 'damage');
+                this.particleSystem.spawnDamageParticles(this.player.x, PLAYER_HEIGHT * 0.6, this.player.z);
             } else if (dmg === -1) {
                 this.hud.addMessage('Dodged projectile!', 'info');
             }
@@ -795,6 +876,7 @@ class Game {
             if (nearItem.type === ITEM_TYPE.GOLD) {
                 this.player.gold += nearItem.amount;
                 this.hud.addMessage(`+${nearItem.amount} Gold`, 'item');
+                this.particleSystem.spawnGoldSparkle(nearItem.worldX, 0.5, nearItem.worldZ);
                 this.itemSystem.removeItem(nearItem);
             } else {
                 const added = this.player.inventory.addItem({
@@ -858,6 +940,7 @@ class Game {
             case 'heal':
                 this.hud.addMessage(`Healed ${result.amount} HP!`, 'heal');
                 this.hud.showHealNumber(window.innerWidth / 2, window.innerHeight / 2, result.amount);
+                this.particleSystem.spawnHealEffect(this.player.x, 0.5, this.player.z);
                 break;
             case 'buff':
                 this.hud.addMessage(`Used ${result.name}!`, 'info');
@@ -886,22 +969,27 @@ class Game {
         }
     }
 
-    _checkStairs() {
+    _tryDescendStairs() {
+        const pg = Utils.worldToGrid(this.player.x, this.player.z);
+        if (this.dungeon.grid[pg.gz]?.[pg.gx] === TILE.STAIRS_DOWN) {
+            this.player.floor++;
+            this.player.stats.floorsCleared++;
+
+            if (this.player.floor > MAX_FLOOR) {
+                this._gameOver(true);
+                return true;
+            }
+
+            this._generateFloor();
+            return true;
+        }
+        return false;
+    }
+
+    _checkStairsPrompt() {
         const pg = Utils.worldToGrid(this.player.x, this.player.z);
         if (this.dungeon.grid[pg.gz]?.[pg.gx] === TILE.STAIRS_DOWN) {
             this.hud.showInteractionPrompt('[E] Descend to next floor');
-
-            if (this.input.wasPressed('KeyE')) {
-                this.player.floor++;
-                this.player.stats.floorsCleared++;
-
-                if (this.player.floor > MAX_FLOOR) {
-                    this._gameOver(true);
-                    return;
-                }
-
-                this._generateFloor();
-            }
         }
     }
 
@@ -1146,6 +1234,7 @@ class Game {
         this.dungeonRenderer.clear();
         this.enemyManager.clear();
         this.projectileManager.clear();
+        this.particleSystem.clear();
         this.itemSystem.clear();
         this.screens.show('title');
         this.input.exitPointerLock();

@@ -283,6 +283,40 @@ body {
     pointer-events: none;
 }
 
+#dash-indicator {
+    position: absolute;
+    bottom: 80px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 120px;
+    height: 6px;
+    background: rgba(0,0,0,0.6);
+    border: 1px solid #335;
+    pointer-events: none;
+}
+
+#dash-bar {
+    height: 100%;
+    width: 100%;
+    background: linear-gradient(90deg, #4488ff, #88ccff);
+    transition: width 0.1s;
+}
+
+#dash-indicator.on-cooldown #dash-bar {
+    background: linear-gradient(90deg, #333, #555);
+}
+
+#dash-text {
+    position: absolute;
+    top: -16px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 0.6rem;
+    color: #88aacc;
+    white-space: nowrap;
+    letter-spacing: 0.05em;
+}
+
 #interaction-prompt {
     position: absolute;
     top: 60%;

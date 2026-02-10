@@ -74,4 +74,6 @@ const UPGRADE_POOL = [
     { id: 'thorns', name: 'Thorny Shield', desc: 'Reflect 20% melee damage', apply: (p) => { p.thorns += 0.2; } },
     { id: 'regen', name: 'Regeneration', desc: 'Heal 1 HP per second', apply: (p) => { p.regen += 1; } },
     { id: 'xp_boost', name: 'Wisdom', desc: '+20% XP gain', apply: (p) => { p.xpMultiplier += 0.2; } },
+    { id: 'dash_cd', name: 'Quick Recovery', desc: '-0.6s Dash Cooldown', apply: (p) => { p.dashMaxCooldown = Math.max(0.8, p.dashMaxCooldown - 0.6); } },
+    { id: 'dash_power', name: 'Momentum', desc: 'Dash travels further and faster', apply: (p) => { p.dashSpeed += 8; p.dashDuration += 0.04; } },
 ];
