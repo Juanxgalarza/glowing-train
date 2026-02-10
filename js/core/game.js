@@ -39,18 +39,30 @@ class Game {
         // Dungeon
         this.dungeon = null;
 
-        // Player light
-        this.playerLight = new THREE.PointLight(0xffeedd, 1.5, 15);
+        // Player light - brighter and longer range
+        this.playerLight = new THREE.PointLight(0xffeedd, 2.5, 22);
         this.playerLight.position.set(0, PLAYER_HEIGHT, 0);
         this.scene.add(this.playerLight);
+
+        // Secondary fill light on player for better visibility
+        this.playerFillLight = new THREE.PointLight(0xaaccff, 0.8, 12);
+        this.playerFillLight.position.set(0, PLAYER_HEIGHT + 1, 0);
+        this.scene.add(this.playerFillLight);
 
         // Weapon visual
         this.weaponMesh = null;
         this.weaponSwing = 0;
+        this.swingPhase = 0; // 0=idle, 1=windup, 2=slash, 3=followthrough, 4=return
+        this.swingTimer = 0;
+        this.currentWeaponId = null;
         this._createWeaponMesh();
 
         // Attack visual
         this.attackVisualTimer = 0;
+
+        // Screen shake
+        this.shakeIntensity = 0;
+        this.shakeTimer = 0;
 
         // Timing
         this.clock = new THREE.Clock();
@@ -71,34 +83,261 @@ class Game {
         this.renderer.setSize(w, h);
     }
 
-    _createWeaponMesh() {
-        // Simple sword mesh attached to camera
-        const group = new THREE.Group();
+    _createWeaponMesh(weaponId) {
+        // Remove old weapon
+        if (this.weaponMesh) {
+            this.camera.remove(this.weaponMesh);
+        }
 
-        // Blade
-        const bladeGeo = new THREE.BoxGeometry(0.05, 0.6, 0.05);
-        const bladeMat = new THREE.MeshLambertMaterial({ color: 0xccccdd });
+        const group = new THREE.Group();
+        const id = weaponId || 'rusty_sword';
+        this.currentWeaponId = id;
+
+        // Build different models per weapon type
+        if (id === 'war_axe') {
+            this._buildAxeModel(group, 0xaaaaaa, 0x886622);
+        } else if (id === 'thunder_hammer') {
+            this._buildHammerModel(group, 0x6688cc, 0x443322, 0x44aaff);
+        } else if (id === 'shadow_dagger') {
+            this._buildDaggerModel(group, 0x554488, 0x222222);
+        } else if (id === 'flame_sword') {
+            this._buildSwordModel(group, 0xff6622, 0xcc4400, 0x886622, true);
+        } else if (id === 'frost_blade') {
+            this._buildSwordModel(group, 0x88ccff, 0x4488cc, 0x556688, false, 0x44aaff);
+        } else if (id === 'vampiric_blade') {
+            this._buildSwordModel(group, 0x881122, 0xcc0033, 0x330011, false, 0xff0044);
+        } else if (id === 'doom_cleaver') {
+            this._buildCleaverModel(group, 0x222222, 0x110022, 0x8800ff);
+        } else if (id === 'celestial_sword') {
+            this._buildSwordModel(group, 0xffffff, 0xffffaa, 0xccaa44, false, 0xffffcc);
+        } else if (id === 'elven_blade') {
+            this._buildSwordModel(group, 0x88cc88, 0x44aa44, 0x336633, false, 0x44ff44);
+        } else if (id === 'iron_sword') {
+            this._buildSwordModel(group, 0xbbbbcc, 0x999999, 0x886622);
+        } else {
+            // Default rusty sword
+            this._buildSwordModel(group, 0xaa8866, 0x886644, 0x553311);
+        }
+
+        group.position.set(0.45, -0.35, -0.55);
+        this.camera.add(group);
+        if (!this.camera.parent) this.scene.add(this.camera);
+        this.weaponMesh = group;
+    }
+
+    _buildSwordModel(group, bladeColor, guardColor, handleColor, hasFlame = false, glowColor = null) {
+        // Blade - tapered
+        const bladeGeo = new THREE.BoxGeometry(0.05, 0.65, 0.03);
+        const bladeMat = new THREE.MeshLambertMaterial({
+            color: bladeColor,
+            emissive: glowColor || 0x000000,
+            emissiveIntensity: glowColor ? 0.4 : 0,
+        });
         const blade = new THREE.Mesh(bladeGeo, bladeMat);
-        blade.position.y = 0.3;
+        blade.position.y = 0.35;
         group.add(blade);
 
-        // Guard
-        const guardGeo = new THREE.BoxGeometry(0.2, 0.04, 0.06);
-        const guardMat = new THREE.MeshLambertMaterial({ color: 0x886622 });
+        // Blade tip
+        const tipGeo = new THREE.ConeGeometry(0.03, 0.12, 4);
+        const tip = new THREE.Mesh(tipGeo, bladeMat);
+        tip.position.y = 0.73;
+        group.add(tip);
+
+        // Blade edge highlight
+        const edgeGeo = new THREE.BoxGeometry(0.06, 0.65, 0.005);
+        const edgeMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.15 });
+        const edge = new THREE.Mesh(edgeGeo, edgeMat);
+        edge.position.y = 0.35;
+        edge.position.z = 0.018;
+        group.add(edge);
+
+        // Guard - cross guard
+        const guardGeo = new THREE.BoxGeometry(0.22, 0.04, 0.05);
+        const guardMat = new THREE.MeshLambertMaterial({ color: guardColor });
+        const guard = new THREE.Mesh(guardGeo, guardMat);
+        group.add(guard);
+
+        // Guard orbs
+        const orbGeo = new THREE.SphereGeometry(0.025, 6, 6);
+        const orbL = new THREE.Mesh(orbGeo, guardMat);
+        const orbR = new THREE.Mesh(orbGeo, guardMat);
+        orbL.position.set(-0.12, 0, 0);
+        orbR.position.set(0.12, 0, 0);
+        group.add(orbL, orbR);
+
+        // Handle - wrapped
+        const handleGeo = new THREE.CylinderGeometry(0.022, 0.025, 0.18, 6);
+        const handleMat = new THREE.MeshLambertMaterial({ color: handleColor });
+        const handle = new THREE.Mesh(handleGeo, handleMat);
+        handle.position.y = -0.11;
+        group.add(handle);
+
+        // Pommel
+        const pommelGeo = new THREE.SphereGeometry(0.03, 6, 6);
+        const pommel = new THREE.Mesh(pommelGeo, guardMat);
+        pommel.position.y = -0.22;
+        group.add(pommel);
+
+        // Flame effect
+        if (hasFlame) {
+            for (let i = 0; i < 3; i++) {
+                const flameGeo = new THREE.ConeGeometry(0.04 - i * 0.01, 0.15 + i * 0.05, 5);
+                const flameMat = new THREE.MeshBasicMaterial({
+                    color: i === 0 ? 0xff4400 : i === 1 ? 0xff8800 : 0xffcc00,
+                    transparent: true, opacity: 0.5 - i * 0.1,
+                });
+                const flame = new THREE.Mesh(flameGeo, flameMat);
+                flame.position.y = 0.5 + i * 0.08;
+                flame.position.x = Math.sin(i * 2) * 0.02;
+                flame.userData = { isWeaponFlame: true, idx: i };
+                group.add(flame);
+            }
+        }
+
+        // Glow light for magical weapons
+        if (glowColor) {
+            const glow = new THREE.PointLight(glowColor, 0.6, 3);
+            glow.position.y = 0.35;
+            group.add(glow);
+        }
+    }
+
+    _buildAxeModel(group, headColor, handleColor) {
+        // Handle - long wooden shaft
+        const handleGeo = new THREE.CylinderGeometry(0.025, 0.03, 0.7, 6);
+        const handleMat = new THREE.MeshLambertMaterial({ color: handleColor });
+        const handle = new THREE.Mesh(handleGeo, handleMat);
+        handle.position.y = 0.1;
+        group.add(handle);
+
+        // Axe head - wider flat shape
+        const headGeo = new THREE.BoxGeometry(0.25, 0.2, 0.04);
+        const headMat = new THREE.MeshLambertMaterial({ color: headColor });
+        const head = new THREE.Mesh(headGeo, headMat);
+        head.position.set(0.08, 0.45, 0);
+        group.add(head);
+
+        // Axe blade edge (curved look)
+        const edgeGeo = new THREE.CylinderGeometry(0.14, 0.14, 0.04, 8, 1, false, 0, Math.PI);
+        const edgeMat = new THREE.MeshLambertMaterial({ color: 0xdddddd });
+        const edge = new THREE.Mesh(edgeGeo, edgeMat);
+        edge.rotation.z = Math.PI / 2;
+        edge.position.set(0.22, 0.45, 0);
+        group.add(edge);
+
+        // Pommel
+        const pommelGeo = new THREE.SphereGeometry(0.035, 6, 6);
+        const pommel = new THREE.Mesh(pommelGeo, headMat);
+        pommel.position.y = -0.25;
+        group.add(pommel);
+    }
+
+    _buildHammerModel(group, headColor, handleColor, glowColor) {
+        // Handle
+        const handleGeo = new THREE.CylinderGeometry(0.03, 0.035, 0.65, 6);
+        const handleMat = new THREE.MeshLambertMaterial({ color: handleColor });
+        const handle = new THREE.Mesh(handleGeo, handleMat);
+        handle.position.y = 0.05;
+        group.add(handle);
+
+        // Hammer head - big block
+        const headGeo = new THREE.BoxGeometry(0.2, 0.15, 0.18);
+        const headMat = new THREE.MeshLambertMaterial({
+            color: headColor, emissive: glowColor, emissiveIntensity: 0.3,
+        });
+        const head = new THREE.Mesh(headGeo, headMat);
+        head.position.y = 0.42;
+        group.add(head);
+
+        // Lightning accents
+        const accentGeo = new THREE.BoxGeometry(0.22, 0.02, 0.02);
+        const accentMat = new THREE.MeshBasicMaterial({ color: glowColor });
+        for (let i = 0; i < 3; i++) {
+            const accent = new THREE.Mesh(accentGeo, accentMat);
+            accent.position.set(0, 0.37 + i * 0.05, 0.08);
+            group.add(accent);
+        }
+
+        // Glow
+        const glow = new THREE.PointLight(glowColor, 0.8, 4);
+        glow.position.y = 0.42;
+        group.add(glow);
+    }
+
+    _buildDaggerModel(group, bladeColor, handleColor) {
+        // Short blade
+        const bladeGeo = new THREE.BoxGeometry(0.035, 0.3, 0.02);
+        const bladeMat = new THREE.MeshLambertMaterial({
+            color: bladeColor, emissive: 0x221144, emissiveIntensity: 0.3,
+        });
+        const blade = new THREE.Mesh(bladeGeo, bladeMat);
+        blade.position.y = 0.2;
+        group.add(blade);
+
+        // Sharp tip
+        const tipGeo = new THREE.ConeGeometry(0.02, 0.1, 4);
+        const tip = new THREE.Mesh(tipGeo, bladeMat);
+        tip.position.y = 0.4;
+        group.add(tip);
+
+        // Guard - small
+        const guardGeo = new THREE.BoxGeometry(0.12, 0.025, 0.04);
+        const guardMat = new THREE.MeshLambertMaterial({ color: 0x444444 });
+        const guard = new THREE.Mesh(guardGeo, guardMat);
+        guard.position.y = 0.04;
+        group.add(guard);
+
+        // Handle - wrapped
+        const handleGeo = new THREE.CylinderGeometry(0.02, 0.022, 0.12, 6);
+        const handleMat = new THREE.MeshLambertMaterial({ color: handleColor });
+        const handle = new THREE.Mesh(handleGeo, handleMat);
+        handle.position.y = -0.04;
+        group.add(handle);
+    }
+
+    _buildCleaverModel(group, bladeColor, handleColor, glowColor) {
+        // Massive blade
+        const bladeGeo = new THREE.BoxGeometry(0.12, 0.75, 0.03);
+        const bladeMat = new THREE.MeshLambertMaterial({
+            color: bladeColor, emissive: glowColor, emissiveIntensity: 0.25,
+        });
+        const blade = new THREE.Mesh(bladeGeo, bladeMat);
+        blade.position.y = 0.4;
+        group.add(blade);
+
+        // Blade wider section
+        const wideGeo = new THREE.BoxGeometry(0.18, 0.35, 0.025);
+        const wide = new THREE.Mesh(wideGeo, bladeMat);
+        wide.position.set(0.03, 0.55, 0);
+        group.add(wide);
+
+        // Rune lines
+        const runeMat = new THREE.MeshBasicMaterial({ color: glowColor, transparent: true, opacity: 0.7 });
+        for (let i = 0; i < 4; i++) {
+            const runeGeo = new THREE.BoxGeometry(0.08, 0.015, 0.035);
+            const rune = new THREE.Mesh(runeGeo, runeMat);
+            rune.position.set(0.01, 0.3 + i * 0.12, 0);
+            rune.userData = { isRune: true, idx: i };
+            group.add(rune);
+        }
+
+        // Guard - spiked
+        const guardGeo = new THREE.BoxGeometry(0.28, 0.05, 0.06);
+        const guardMat = new THREE.MeshLambertMaterial({ color: 0x333333 });
         const guard = new THREE.Mesh(guardGeo, guardMat);
         group.add(guard);
 
         // Handle
-        const handleGeo = new THREE.BoxGeometry(0.04, 0.15, 0.04);
-        const handleMat = new THREE.MeshLambertMaterial({ color: 0x553311 });
+        const handleGeo = new THREE.CylinderGeometry(0.028, 0.032, 0.22, 6);
+        const handleMat = new THREE.MeshLambertMaterial({ color: handleColor });
         const handle = new THREE.Mesh(handleGeo, handleMat);
-        handle.position.y = -0.1;
+        handle.position.y = -0.13;
         group.add(handle);
 
-        group.position.set(0.4, -0.3, -0.6);
-        this.camera.add(group);
-        this.scene.add(this.camera);
-        this.weaponMesh = group;
+        // Glow
+        const glow = new THREE.PointLight(glowColor, 0.5, 3);
+        glow.position.y = 0.5;
+        group.add(glow);
     }
 
     startNewGame() {
@@ -116,6 +355,9 @@ class Game {
         this.player.inventory.addItem(startPotion);
         this.player.inventory.assignConsumable(startPotion, 0);
 
+        // Build weapon model for starting weapon
+        this._createWeaponMesh(startSword.id);
+
         this._generateFloor();
         this.input.requestPointerLock(this.canvas);
     }
@@ -127,8 +369,16 @@ class Game {
         this.projectileManager.clear();
         this.itemSystem.clear();
 
-        // Generate dungeon
-        const size = 35 + this.player.floor * 5;
+        // Generate dungeon - early floors are smaller for faster progression
+        const floor = this.player.floor;
+        let size;
+        if (floor <= 2) {
+            size = 22 + floor * 3; // Floors 1-2: small (25-28)
+        } else if (floor <= 4) {
+            size = 28 + floor * 2; // Floors 3-4: medium (34-36)
+        } else {
+            size = 32 + floor * 3; // Floors 5+: large (47+)
+        }
         const gen = new DungeonGenerator(size, size, this.player.floor);
         this.dungeon = gen.generate();
 
@@ -228,6 +478,7 @@ class Game {
 
             this.camera.position.set(this.player.x, PLAYER_HEIGHT, this.player.z);
             this.playerLight.position.set(this.player.x, PLAYER_HEIGHT, this.player.z);
+            this.playerFillLight.position.set(this.player.x, PLAYER_HEIGHT + 1, this.player.z);
         }
 
         // Player update
@@ -319,7 +570,8 @@ class Game {
     _playerAttack() {
         const stats = this.player.getEffectiveStats();
         this.player.attackCooldown = 1 / stats.attackSpeed;
-        this.weaponSwing = 1.0;
+        this.swingPhase = 1;
+        this.swingTimer = 0;
         this.attackVisualTimer = 0.2;
 
         const result = this.player.dealDamage();
@@ -667,16 +919,153 @@ class Game {
     }
 
     _updateWeaponAnim(dt) {
-        if (this.weaponSwing > 0) {
-            this.weaponSwing -= dt * 5;
-            const swing = Math.sin(this.weaponSwing * Math.PI) * 0.8;
-            this.weaponMesh.rotation.z = -swing;
-            this.weaponMesh.rotation.x = swing * 0.3;
-            this.weaponMesh.position.x = 0.4 - swing * 0.2;
+        if (!this.weaponMesh) return;
+
+        const id = this.currentWeaponId || 'rusty_sword';
+        const isHeavy = id === 'war_axe' || id === 'thunder_hammer' || id === 'doom_cleaver';
+        const isDagger = id === 'shadow_dagger';
+
+        // Screen shake
+        if (this.shakeTimer > 0) {
+            this.shakeTimer -= dt;
+            const s = this.shakeIntensity * (this.shakeTimer / 0.15);
+            this.camera.position.x += (Math.random() - 0.5) * s;
+            this.camera.position.y += (Math.random() - 0.5) * s * 0.5 + PLAYER_HEIGHT;
+        }
+
+        if (this.swingPhase > 0) {
+            this.swingTimer += dt;
+
+            if (isDagger) {
+                // Dagger: quick stab animation
+                const stabSpeed = 8;
+                if (this.swingPhase === 1) {
+                    // Pull back
+                    const t = Math.min(this.swingTimer * stabSpeed, 1);
+                    this.weaponMesh.position.z = -0.55 + t * 0.15;
+                    this.weaponMesh.rotation.x = t * 0.3;
+                    if (t >= 1) { this.swingPhase = 2; this.swingTimer = 0; }
+                } else if (this.swingPhase === 2) {
+                    // Stab forward
+                    const t = Math.min(this.swingTimer * stabSpeed * 1.5, 1);
+                    this.weaponMesh.position.z = -0.4 - t * 0.35;
+                    this.weaponMesh.rotation.x = 0.3 - t * 0.5;
+                    this.weaponMesh.position.y = -0.35 + t * 0.1;
+                    if (t >= 1) { this.swingPhase = 3; this.swingTimer = 0; }
+                } else if (this.swingPhase === 3) {
+                    // Return
+                    const t = Math.min(this.swingTimer * stabSpeed * 0.8, 1);
+                    const ease = 1 - Math.pow(1 - t, 2);
+                    this.weaponMesh.position.z = -0.75 + ease * 0.2;
+                    this.weaponMesh.rotation.x = -0.2 + ease * 0.2;
+                    this.weaponMesh.position.y = -0.25 - ease * 0.1;
+                    if (t >= 1) { this.swingPhase = 0; this.swingTimer = 0; }
+                }
+            } else if (isHeavy) {
+                // Heavy weapons: overhead slam
+                const slamSpeed = 4;
+                if (this.swingPhase === 1) {
+                    // Wind up - raise weapon overhead
+                    const t = Math.min(this.swingTimer * slamSpeed, 1);
+                    const ease = t * t;
+                    this.weaponMesh.rotation.x = ease * 1.2;
+                    this.weaponMesh.rotation.z = ease * -0.3;
+                    this.weaponMesh.position.y = -0.35 + ease * 0.3;
+                    this.weaponMesh.position.z = -0.55 + ease * 0.1;
+                    if (t >= 1) { this.swingPhase = 2; this.swingTimer = 0; }
+                } else if (this.swingPhase === 2) {
+                    // Slam down - fast
+                    const t = Math.min(this.swingTimer * slamSpeed * 3, 1);
+                    const ease = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+                    this.weaponMesh.rotation.x = 1.2 - ease * 2.0;
+                    this.weaponMesh.rotation.z = -0.3 + ease * 0.5;
+                    this.weaponMesh.position.y = -0.05 - ease * 0.4;
+                    this.weaponMesh.position.z = -0.45 - ease * 0.15;
+                    if (t >= 1) {
+                        this.swingPhase = 3; this.swingTimer = 0;
+                        // Screen shake on impact
+                        this.shakeIntensity = 0.08;
+                        this.shakeTimer = 0.15;
+                    }
+                } else if (this.swingPhase === 3) {
+                    // Hold briefly
+                    const t = Math.min(this.swingTimer * slamSpeed * 2, 1);
+                    if (t >= 1) { this.swingPhase = 4; this.swingTimer = 0; }
+                } else if (this.swingPhase === 4) {
+                    // Return to idle
+                    const t = Math.min(this.swingTimer * slamSpeed * 1.5, 1);
+                    const ease = 1 - Math.pow(1 - t, 3);
+                    this.weaponMesh.rotation.x = -0.8 + ease * 0.8;
+                    this.weaponMesh.rotation.z = 0.2 - ease * 0.2;
+                    this.weaponMesh.position.y = -0.45 + ease * 0.1;
+                    this.weaponMesh.position.z = -0.6 + ease * 0.05;
+                    if (t >= 1) { this.swingPhase = 0; this.swingTimer = 0; }
+                }
+            } else {
+                // Sword: horizontal slash
+                const slashSpeed = 6;
+                if (this.swingPhase === 1) {
+                    // Wind up - pull right
+                    const t = Math.min(this.swingTimer * slashSpeed, 1);
+                    const ease = t * t;
+                    this.weaponMesh.rotation.z = ease * 0.6;
+                    this.weaponMesh.rotation.y = ease * -0.3;
+                    this.weaponMesh.position.x = 0.45 + ease * 0.15;
+                    this.weaponMesh.position.y = -0.35 + ease * 0.15;
+                    if (t >= 1) { this.swingPhase = 2; this.swingTimer = 0; }
+                } else if (this.swingPhase === 2) {
+                    // Slash across - fast diagonal
+                    const t = Math.min(this.swingTimer * slashSpeed * 2.5, 1);
+                    const ease = t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+                    this.weaponMesh.rotation.z = 0.6 - ease * 1.8;
+                    this.weaponMesh.rotation.x = ease * -0.4;
+                    this.weaponMesh.rotation.y = -0.3 + ease * 0.6;
+                    this.weaponMesh.position.x = 0.6 - ease * 0.5;
+                    this.weaponMesh.position.y = -0.2 - ease * 0.15;
+                    if (t >= 1) {
+                        this.swingPhase = 3; this.swingTimer = 0;
+                        this.shakeIntensity = 0.03;
+                        this.shakeTimer = 0.08;
+                    }
+                } else if (this.swingPhase === 3) {
+                    // Follow through
+                    const t = Math.min(this.swingTimer * slashSpeed * 1.5, 1);
+                    const ease = 1 - Math.pow(1 - t, 3);
+                    this.weaponMesh.rotation.z = -1.2 + ease * 1.2;
+                    this.weaponMesh.rotation.x = -0.4 + ease * 0.4;
+                    this.weaponMesh.rotation.y = 0.3 - ease * 0.3;
+                    this.weaponMesh.position.x = 0.1 + ease * 0.35;
+                    this.weaponMesh.position.y = -0.35;
+                    if (t >= 1) { this.swingPhase = 0; this.swingTimer = 0; }
+                }
+            }
         } else {
-            // Idle bob
-            this.weaponMesh.rotation.z = Math.sin(this.time * 2) * 0.02;
-            this.weaponMesh.position.y = -0.3 + Math.sin(this.time * 2) * 0.01;
+            // Idle animation - gentle bob and sway
+            const { mx, mz } = this.input.getMovement();
+            const isMoving = mx !== 0 || mz !== 0;
+            const bobSpeed = isMoving ? 6 : 2;
+            const bobAmount = isMoving ? 0.025 : 0.008;
+            const swayAmount = isMoving ? 0.04 : 0.015;
+
+            this.weaponMesh.position.x = 0.45 + Math.sin(this.time * bobSpeed * 0.7) * swayAmount;
+            this.weaponMesh.position.y = -0.35 + Math.sin(this.time * bobSpeed) * bobAmount;
+            this.weaponMesh.position.z = -0.55;
+            this.weaponMesh.rotation.x = 0;
+            this.weaponMesh.rotation.y = 0;
+            this.weaponMesh.rotation.z = Math.sin(this.time * bobSpeed * 0.5) * 0.02;
+        }
+
+        // Animate weapon effects (flames, runes)
+        if (this.weaponMesh) {
+            this.weaponMesh.traverse((child) => {
+                if (child.userData?.isWeaponFlame) {
+                    child.position.y = 0.5 + child.userData.idx * 0.08 + Math.sin(this.time * 10 + child.userData.idx) * 0.04;
+                    child.scale.setScalar(0.8 + Math.sin(this.time * 12 + child.userData.idx * 2) * 0.3);
+                }
+                if (child.userData?.isRune) {
+                    child.material.opacity = 0.4 + Math.sin(this.time * 3 + child.userData.idx * 1.5) * 0.3;
+                }
+            });
         }
     }
 
@@ -698,7 +1087,12 @@ class Game {
                 this.input.exitPointerLock();
                 this.screens.showInventory(
                     this.player.inventory,
-                    (item) => this.player.inventory.equip(item),
+                    (item) => {
+                        this.player.inventory.equip(item);
+                        if (item.type === ITEM_TYPE.WEAPON) {
+                            this._createWeaponMesh(item.id);
+                        }
+                    },
                     (item) => {
                         // Use consumable from inventory
                         if (item.heal) {
