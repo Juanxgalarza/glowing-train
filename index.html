@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dungeon of Shadows - 3D Roguelike</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <div id="game-container">
+        <canvas id="game-canvas"></canvas>
+
+        <!-- Title Screen -->
+        <div id="title-screen" class="screen">
+            <div class="title-content">
+                <h1 class="game-title">DUNGEON<br><span>OF SHADOWS</span></h1>
+                <p class="subtitle">A 3D Roguelike Adventure</p>
+                <button id="btn-start" class="menu-btn">Start Game</button>
+                <button id="btn-controls" class="menu-btn secondary">Controls</button>
+                <div id="controls-panel" class="hidden">
+                    <p><strong>WASD / Arrows</strong> - Move</p>
+                    <p><strong>Mouse</strong> - Look around</p>
+                    <p><strong>Left Click</strong> - Attack</p>
+                    <p><strong>E</strong> - Pick up item / Interact</p>
+                    <p><strong>1-5</strong> - Use consumables</p>
+                    <p><strong>Tab</strong> - Inventory</p>
+                    <p><strong>M</strong> - Toggle minimap</p>
+                    <p><strong>Esc</strong> - Pause</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- HUD -->
+        <div id="hud" class="hidden">
+            <div id="hud-top-left">
+                <div id="health-bar-container">
+                    <div id="health-bar"></div>
+                    <span id="health-text">100/100</span>
+                </div>
+                <div id="xp-bar-container">
+                    <div id="xp-bar"></div>
+                    <span id="xp-text">Lv.1 0/100</span>
+                </div>
+                <div id="stats-display">
+                    <span id="atk-stat">ATK: 10</span>
+                    <span id="def-stat">DEF: 5</span>
+                    <span id="spd-stat">SPD: 1.0</span>
+                </div>
+            </div>
+            <div id="hud-top-right">
+                <div id="floor-display">Floor 1</div>
+                <div id="gold-display">Gold: 0</div>
+                <canvas id="minimap-canvas" width="180" height="180"></canvas>
+            </div>
+            <div id="hud-bottom">
+                <div id="consumables-bar"></div>
+                <div id="message-log"></div>
+            </div>
+            <div id="crosshair">+</div>
+            <div id="interaction-prompt" class="hidden">
+                <span id="prompt-text">[E] Pick up</span>
+            </div>
+        </div>
+
+        <!-- Inventory Screen -->
+        <div id="inventory-screen" class="screen hidden">
+            <div class="inventory-panel">
+                <h2>Inventory</h2>
+                <div id="equipment-slots">
+                    <div class="equip-slot" data-slot="weapon">
+                        <span class="slot-label">Weapon</span>
+                        <div class="slot-content" id="slot-weapon">Empty</div>
+                    </div>
+                    <div class="equip-slot" data-slot="armor">
+                        <span class="slot-label">Armor</span>
+                        <div class="slot-content" id="slot-armor">Empty</div>
+                    </div>
+                    <div class="equip-slot" data-slot="accessory">
+                        <span class="slot-label">Accessory</span>
+                        <div class="slot-content" id="slot-accessory">Empty</div>
+                    </div>
+                </div>
+                <h3>Items</h3>
+                <div id="inventory-grid"></div>
+                <div id="item-details">
+                    <p>Select an item to see details</p>
+                </div>
+                <button id="btn-close-inv" class="menu-btn secondary">Close [Tab]</button>
+            </div>
+        </div>
+
+        <!-- Level Up Screen -->
+        <div id="levelup-screen" class="screen hidden">
+            <div class="levelup-panel">
+                <h2>Level Up!</h2>
+                <p>Choose an upgrade:</p>
+                <div id="upgrade-choices"></div>
+            </div>
+        </div>
+
+        <!-- Pause Screen -->
+        <div id="pause-screen" class="screen hidden">
+            <div class="pause-panel">
+                <h2>Paused</h2>
+                <button id="btn-resume" class="menu-btn">Resume</button>
+                <button id="btn-quit" class="menu-btn secondary">Quit to Title</button>
+            </div>
+        </div>
+
+        <!-- Game Over Screen -->
+        <div id="gameover-screen" class="screen hidden">
+            <div class="gameover-panel">
+                <h2 id="gameover-title">Game Over</h2>
+                <div id="gameover-stats"></div>
+                <button id="btn-restart" class="menu-btn">Try Again</button>
+                <button id="btn-title" class="menu-btn secondary">Title Screen</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Three.js from CDN -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+
+    <!-- Game Scripts -->
+    <script src="js/utils/constants.js"></script>
+    <script src="js/utils/helpers.js"></script>
+    <script src="js/dungeon/generator.js"></script>
+    <script src="js/dungeon/renderer.js"></script>
+    <script src="js/items/itemData.js"></script>
+    <script src="js/items/itemSystem.js"></script>
+    <script src="js/entities/player.js"></script>
+    <script src="js/entities/enemies.js"></script>
+    <script src="js/entities/projectiles.js"></script>
+    <script src="js/ui/hud.js"></script>
+    <script src="js/ui/screens.js"></script>
+    <script src="js/core/input.js"></script>
+    <script src="js/core/game.js"></script>
+    <script src="js/core/main.js"></script>
+</body>
+</html>
